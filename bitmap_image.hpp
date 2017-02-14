@@ -685,14 +685,18 @@ public:
 
    inline void export_response_image(const color_plane color, double* response_image)
    {
+      double* resp_itr = response_image;
+
       for (unsigned char* itr = (data() + offset(color)); itr < end(); ++response_image, itr += bytes_per_pixel_)
       {
-         (*response_image) = (1.0 * (*itr)) / 256.0;
+         *(resp_itr++) = (1.0 * (*itr)) / 256.0;
       }
    }
 
    inline void export_gray_scale_response_image(double* response_image) const
    {
+      double* resp_itr = response_image;
+
       for (const unsigned char* itr = data(); itr < end(); itr += bytes_per_pixel_)
       {
          unsigned char gray_value = static_cast<unsigned char>
@@ -702,7 +706,7 @@ public:
                          (0.114 * (*(itr + 0)))
                        );
 
-         (*response_image) = (1.0 * gray_value) / 256.0;
+         *(resp_itr++) = (1.0 * gray_value) / 256.0;
       }
    }
 
@@ -841,6 +845,23 @@ public:
          *(itr++) = static_cast<unsigned char>(clamp((298.082 * y_ + 516.412 * cb_                 ) / 256.0 - 276.836,0.0,255.0));
          *(itr++) = static_cast<unsigned char>(clamp((298.082 * y_ - 100.291 * cb_ - 208.120 * cr_ ) / 256.0 + 135.576,0.0,255.0));
          *(itr++) = static_cast<unsigned char>(clamp((298.082 * y_                 + 408.583 * cr_ ) / 256.0 - 222.921,0.0,255.0));
+      }
+   }
+
+   inline void import_gray_scale_clamped(double* gray)
+   {
+      if (bgr_mode != channel_mode_)
+         return;
+
+      for (unsigned char* itr = data(); itr < end(); ++gray)
+      {
+         unsigned char c = static_cast<unsigned char>(clamp<double>(256.0 * (*gray),0.0,255.0));
+
+         *(itr + 0) = c;
+         *(itr + 1) = c;
+         *(itr + 2) = c;
+
+         itr += 3;
       }
    }
 
@@ -2010,7 +2031,7 @@ inline void hierarchical_psnr_r(const double& x,     const double& y,
                                  static_cast<unsigned int>(y),
                                  static_cast<unsigned int>(width),
                                  static_cast<unsigned int>(height),
-                                 image1,image2
+                                 image1, image2
                                );
 
       if (psnr < threshold)
@@ -2022,7 +2043,7 @@ inline void hierarchical_psnr_r(const double& x,     const double& y,
                             static_cast<unsigned int>(y),
                             static_cast<unsigned int>(width + 1),
                             static_cast<unsigned int>(height + 1),
-                            c.red,c.green,c.blue
+                            c.red, c.green, c.blue
                           );
       }
    }
@@ -2031,14 +2052,14 @@ inline void hierarchical_psnr_r(const double& x,     const double& y,
       double half_width  = ( width / 2.0);
       double half_height = (height / 2.0);
 
-      hierarchical_psnr_r(x             , y              , half_width, half_height,image1,image2,threshold,colormap);
-      hierarchical_psnr_r(x + half_width, y              , half_width, half_height,image1,image2,threshold,colormap);
-      hierarchical_psnr_r(x + half_width, y + half_height, half_width, half_height,image1,image2,threshold,colormap);
-      hierarchical_psnr_r(x             , y + half_height, half_width, half_height,image1,image2,threshold,colormap);
+      hierarchical_psnr_r(x             , y              , half_width, half_height, image1, image2, threshold, colormap);
+      hierarchical_psnr_r(x + half_width, y              , half_width, half_height, image1, image2, threshold, colormap);
+      hierarchical_psnr_r(x + half_width, y + half_height, half_width, half_height, image1, image2, threshold, colormap);
+      hierarchical_psnr_r(x             , y + half_height, half_width, half_height, image1, image2, threshold, colormap);
    }
 }
 
-inline void hierarchical_psnr(bitmap_image& image1,bitmap_image& image2, const double threshold, const rgb_t colormap[])
+inline void hierarchical_psnr(bitmap_image& image1, bitmap_image& image2, const double threshold, const rgb_t colormap[])
 {
    if (
         (image1.width()  != image2.width ()) ||
@@ -2052,7 +2073,9 @@ inline void hierarchical_psnr(bitmap_image& image1,bitmap_image& image2, const d
 
    if (psnr < threshold)
    {
-      hierarchical_psnr_r(0,0, image1.width(), image1.height(),image1,image2,threshold,colormap);
+      hierarchical_psnr_r(0, 0, image1.width(), image1.height(),
+                          image1, image2,
+                          threshold, colormap);
    }
 }
 
@@ -2972,6 +2995,7 @@ public:
    {
       if (y >= height_) return null_;
       if (x >= width_ ) return null_;
+
       return data_[width_ * y + x];
    }
 
@@ -2979,6 +3003,7 @@ public:
    {
       if (y >= height_) return null_;
       if (x >= width_ ) return null_;
+
       return data_[width_ * y + x];
    }
 
@@ -2995,15 +3020,83 @@ public:
       }
    }
 
+   void mul_all(const T& v)
+   {
+      for (std::size_t i = 0; i < data_.size(); ++i)
+      {
+         data_[i] *= v;
+      }
+   }
+
+   T* row (const std::size_t& row_index)
+   {
+      if (row_index < height_)
+         return &data_[width_ * row_index];
+      else
+         return reinterpret_cast<T*>(0);
+   }
+
+   const T* row (const std::size_t& row_index) const
+   {
+      if (row_index < height_)
+         return data_[width_ * row_index];
+      else
+         return reinterpret_cast<T*>(0);
+   }
+
 private:
 
    std::size_t    width_;
    std::size_t    height_;
-   std::size_t    offset_x_;
-   std::size_t    offset_y_;
    std::vector<T> data_;
    T              null_;
 };
+
+inline void sobel_operator(const bitmap_image& src_image,
+                                 bitmap_image& dst_image,
+                           const double threshold = 0.0)
+{
+   typedef double T;
+
+   response_image<T> im0(src_image.width(), src_image.height(), 0.0);
+   response_image<T> im1(src_image.width(), src_image.height(), 0.0);
+
+   src_image.export_gray_scale_response_image(&im0(0,0));
+
+   for (std::size_t y = 1; y < im0.height() - 1; ++y)
+   {
+      const T* itr0 = im0.row(y - 1);
+      const T* itr1 = im0.row(y    );
+      const T* itr2 = im0.row(y + 1);
+            T* out  = im1.row(y    ) + 1;
+
+      for (std::size_t x = 1; x < im0.width() - 1; ++x)
+      {
+         const T c0 = *(itr0 + x - 1);   const T c1 = *(itr0 + x);   const T c2 = *(itr0 + x + 1);
+         const T c3 = *(itr1 + x - 1); /*const T c4 = *(itr1 + x);*/ const T c5 = *(itr1 + x + 1);
+         const T c6 = *(itr2 + x - 1);   const T c7 = *(itr2 + x);   const T c8 = *(itr2 + x + 1);
+
+         const T gx = (2.0 * (c5 - c3)) + (c2 - c0) + (c8 - c6);
+         const T gy = (2.0 * (c1 - c7)) + (c0 - c6) + (c2 - c8);
+
+         *(out++) = std::sqrt((gx * gx) + (gy * gy));
+      }
+   }
+
+   if (threshold > 0.0)
+   {
+      const T* end = im1.row(0) + (im1.width() * im1.height());
+
+      for (T* itr = im1.row(0); itr != end; ++itr)
+      {
+         T& v = *itr;
+         if (v <= threshold) v = 0;
+      }
+   }
+
+   dst_image.setwidth_height(im1.width(), im1.height());
+   dst_image.import_gray_scale_clamped(&im1(0,0));
+}
 
 enum palette_name
 {
